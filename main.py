@@ -1,32 +1,66 @@
+import telebot
+import json
 import os
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from flask import Flask, request
 
-# Environment থেকে token এবং id নিবে
+# Environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-USER_ID = int(os.getenv("USER_ID", "0"))
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1002912079356"))
+ADMIN_ID = os.getenv("ADMIN_ID")   # তোমার Telegram ID (6573815394)
+CHANNEL_ID = os.getenv("CHANNEL_ID")  # তোমার চ্যানেলের ID (-1002912079356)
 
-async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message:
-        # Channel এ মেসেজ এলেই তোমাকে পাঠাবে
-        await context.bot.send_message(
-            chat_id=USER_ID,
-            text=f"Message ID: {update.message.message_id}\nChannel ID: {CHANNEL_ID}"
-        )
+bot = telebot.TeleBot(BOT_TOKEN)
+server = Flask(name)
 
-def main():
-    if not BOT_TOKEN:
-        print("❌ BOT_TOKEN পাওয়া যায়নি! Render/GitHub এ Environment Variable সেট করো।")
-        return
+# movies.json লোড করা
+MOVIES_FILE = "movies.json"
+if not os.path.exists(MOVIES_FILE):
+    with open(MOVIES_FILE, "w") as f:
+        json.dump({}, f)
 
-    application = Application.builder().token(BOT_TOKEN).build()
+with open(MOVIES_FILE, "r") as f:
+    movies = json.load(f)
 
-    # সব ধরনের মেসেজ ধরার জন্য হ্যান্ডলার
-    application.add_handler(MessageHandler(filters.ALL, forward_message))
 
-    print("✅ Bot is running...")
-    application.run_polling()
+# ---------- Private Channel Message Capture ----------
+@bot.channel_post_handler(content_types=['video', 'document'])
+def capture_channel_message(message):
+    if str(message.chat.id) == str(CHANNEL_ID):
+        info = f"📌 Channel ID: {message.chat.id}\n🆔 Message ID: {message.message_id}"
+        bot.send_message(ADMIN_ID, info)   # ADMIN এর কাছে পাঠাবে
+
+
+# ---------- User Command Handlers ----------
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "🎬 Welcome! Send me a movie name and I will fetch it for you.")
+
+
+@bot.message_handler(func=lambda msg: True)
+def search_movie(message):
+    query = message.text.strip().lower()
+    if query in movies:
+        movie_data = movies[query]
+        try:
+            bot.copy_message(message.chat.id, movie_data["channel_id"], movie_data["message_id"])
+        except Exception as e:
+            bot.reply_to(message, f"⚠️ Error fetching movie: {e}")
+    else:
+        bot.reply_to(message, "❌ Movie not found in database.")
+
+
+# ---------- Flask Webhook ----------
+@server.route("/" + BOT_TOKEN, methods=['POST'])
+def getMessage():
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "OK", 200
+
+
+@server.route("/")
+def webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url="https://YOUR_RENDER_URL/" + BOT_TOKEN)
+    return "Webhook set!", 200
+
 
 if name == "main":
-    main()
+    server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
