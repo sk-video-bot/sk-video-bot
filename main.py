@@ -1,66 +1,33 @@
-import telebot
-import json
 import os
-from flask import Flask, request
+import telebot
 
-# Environment variables
+# 🔹 Environment থেকে টোকেন নেবে
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = os.getenv("ADMIN_ID")   # তোমার Telegram ID (6573815394)
-CHANNEL_ID = os.getenv("CHANNEL_ID")  # তোমার চ্যানেলের ID (-1002912079356)
 
+# 🔹 ফিক্সড ভ্যালু (তোমার নিজের আইডি আর চ্যানেল আইডি বসাও)
+ADMIN_ID = 6573815394
+CHANNEL_ID = -1002912079356
+
+# 🔹 বট তৈরি
 bot = telebot.TeleBot(BOT_TOKEN)
-server = Flask(name)
 
-# movies.json লোড করা
-MOVIES_FILE = "movies.json"
-if not os.path.exists(MOVIES_FILE):
-    with open(MOVIES_FILE, "w") as f:
-        json.dump({}, f)
-
-with open(MOVIES_FILE, "r") as f:
-    movies = json.load(f)
-
-
-# ---------- Private Channel Message Capture ----------
-@bot.channel_post_handler(content_types=['video', 'document'])
-def capture_channel_message(message):
-    if str(message.chat.id) == str(CHANNEL_ID):
-        info = f"📌 Channel ID: {message.chat.id}\n🆔 Message ID: {message.message_id}"
-        bot.send_message(ADMIN_ID, info)   # ADMIN এর কাছে পাঠাবে
-
-
-# ---------- User Command Handlers ----------
+# ✅ Start Command
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "🎬 Welcome! Send me a movie name and I will fetch it for you.")
+    bot.reply_to(message, "👋 হ্যালো! আমি SK Video Bot.\n\nযেকোনো মুভি/ভিডিও লিস্ট পেতে কমান্ড ব্যবহার করুন।")
 
-
-@bot.message_handler(func=lambda msg: True)
-def search_movie(message):
-    query = message.text.strip().lower()
-    if query in movies:
-        movie_data = movies[query]
+# ✅ চ্যানেল থেকে ভিডিও পাঠানো টেস্ট (শুধু এডমিন করতে পারবে)
+@bot.message_handler(commands=['test'])
+def send_from_channel(message):
+    if message.from_user.id == ADMIN_ID:
         try:
-            bot.copy_message(message.chat.id, movie_data["channel_id"], movie_data["message_id"])
+            bot.forward_message(message.chat.id, CHANNEL_ID, 1)  # চ্যানেল থেকে মেসেজ আইডি=1 ফরওয়ার্ড করবে
+            bot.reply_to(message, "✅ চ্যানেল থেকে ভিডিও ফরওয়ার্ড হলো।")
         except Exception as e:
-            bot.reply_to(message, f"⚠️ Error fetching movie: {e}")
+            bot.reply_to(message, f"⚠️ সমস্যা: {e}")
     else:
-        bot.reply_to(message, "❌ Movie not found in database.")
+        bot.reply_to(message, "❌ আপনি এই কমান্ড ব্যবহার করতে পারবেন না।")
 
-
-# ---------- Flask Webhook ----------
-@server.route("/" + BOT_TOKEN, methods=['POST'])
-def getMessage():
-    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK", 200
-
-
-@server.route("/")
-def webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url="https://YOUR_RENDER_URL/" + BOT_TOKEN)
-    return "Webhook set!", 200
-
-
-if name == "main":
-    server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+# ✅ বট চালু রাখা
+print("🤖 Bot is running...")
+bot.polling(none_stop=True, timeout=60)
