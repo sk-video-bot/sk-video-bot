@@ -1,33 +1,51 @@
-import os
+from keep_alive import keep_alive
 import telebot
+from telebot.types import Message
+import os
+import json
+import datetime
 
-# 🔹 Environment থেকে টোকেন নেবে
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# টোকেন লোড করা হচ্ছে
+TOKEN = os.getenv("TOKEN")
+bot = telebot.TeleBot(TOKEN)
 
-# 🔹 ফিক্সড ভ্যালু (তোমার নিজের আইডি আর চ্যানেল আইডি বসাও)
-ADMIN_ID = 6573815394
-CHANNEL_ID = -1002912079356
+# movies.json ফাইল থেকে মুভির তালিকা লোড করা হচ্ছে
+with open("movies.json", "r") as f:
+    MOVIES = json.load(f)
 
-# 🔹 বট তৈরি
-bot = telebot.TeleBot(BOT_TOKEN)
-
-# ✅ Start Command
+# /start কমান্ডের জন্য ফাংশন
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "👋 হ্যালো! আমি SK Video Bot.\n\nযেকোনো মুভি/ভিডিও লিস্ট পেতে কমান্ড ব্যবহার করুন।")
-
-# ✅ চ্যানেল থেকে ভিডিও পাঠানো টেস্ট (শুধু এডমিন করতে পারবে)
-@bot.message_handler(commands=['test'])
-def send_from_channel(message):
-    if message.from_user.id == ADMIN_ID:
-        try:
-            bot.forward_message(message.chat.id, CHANNEL_ID, 1)  # চ্যানেল থেকে মেসেজ আইডি=1 ফরওয়ার্ড করবে
-            bot.reply_to(message, "✅ চ্যানেল থেকে ভিডিও ফরওয়ার্ড হলো।")
-        except Exception as e:
-            bot.reply_to(message, f"⚠️ সমস্যা: {e}")
+def send_movie(message: Message):
+    # কমান্ড থেকে মুভির কোড আলাদা করার নির্ভরযোগ্য নিয়ম
+    parts = message.text.split()
+    if len(parts) > 1:
+        movie_code = parts[1]
     else:
-        bot.reply_to(message, "❌ আপনি এই কমান্ড ব্যবহার করতে পারবেন না।")
+        movie_code = "default"
 
-# ✅ বট চালু রাখা
-print("🤖 Bot is running...")
-bot.polling(none_stop=True, timeout=60)
+    bot.send_message(message.chat.id, "🎬 Welcome to Sk Video Bot!\nPlease wait...")
+
+    # ব্যবহারকারীর তথ্য লগ করা হচ্ছে
+    user_id = message.chat.id
+    username = message.chat.username
+    first_name = message.chat.first_name
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_text = f"{now} - {first_name} (@{username}) - ID: {user_id} - Movie: {movie_code}\n"
+    with open("log.txt", "a") as f:
+        f.write(log_text)
+
+    # JSON থেকে মুভি পাঠানো হচ্ছে
+    movie = MOVIES.get(movie_code, MOVIES["default"])
+    try:
+        bot.copy_message(chat_id=message.chat.id,
+                         from_chat_id=movie["chat_id"],
+                         message_id=movie["msg_id"])
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ ভিডিও পাঠানো যায়নি। এরর: {e}")
+
+# keep_alive ফাংশনটি চালু করা হচ্ছে
+keep_alive()
+
+# বট সবসময় চালু রাখার জন্য
+print("✅ Bot is running...")
+bot.infinity_polling(timeout=10, long_polling_timeout=5)
