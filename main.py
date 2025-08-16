@@ -23,7 +23,7 @@ def send_movie(message: Message):
     else:
         movie_code = "default"
 
-    bot.send_message(message.chat.id, "🎬 Welcome to Sk Movie Bot!\nPlease wait...")
+    bot.send_message(message.chat.id, "🎬 Welcome to Sk Video Bot!\nPlease wait...")
 
     # ব্যবহারকারীর তথ্য লগ করা হচ্ছে
     user_id = message.chat.id
