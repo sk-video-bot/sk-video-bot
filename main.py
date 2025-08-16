@@ -1,51 +1,77 @@
-from keep_alive import keep_alive
-import telebot
-from telebot.types import Message
-import os
-import json
-import datetime
+import logging
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-# টোকেন লোড করা হচ্ছে
-TOKEN = os.getenv("TOKEN")
-bot = telebot.TeleBot(TOKEN)
+# --- CONFIG ---
+BOT_TOKEN = "8262301075:AAHNJHGbgw8MCK8NPOJlO1BOMM2xVFSxsfY"
+ADMIN_ID = 6573815394   # তোমার টেলিগ্রাম আইডি
+CHANNEL_ID = -1002912079356  # তোমার প্রাইভেট চ্যানেল আইডি
 
-# movies.json ফাইল থেকে মুভির তালিকা লোড করা হচ্ছে
-with open("movies.json", "r") as f:
-    MOVIES = json.load(f)
+# Enable logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(name)
 
-# /start কমান্ডের জন্য ফাংশন
-@bot.message_handler(commands=['start'])
-def send_movie(message: Message):
-    # কমান্ড থেকে মুভির কোড আলাদা করার নির্ভরযোগ্য নিয়ম
-    parts = message.text.split()
-    if len(parts) > 1:
-        movie_code = parts[1]
-    else:
-        movie_code = "default"
 
-    bot.send_message(message.chat.id, "🎬 Welcome to Sk Video Bot!\nPlease wait...")
+# /start command
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("👋 Welcome! Send me a movie name to get started.")
 
-    # ব্যবহারকারীর তথ্য লগ করা হচ্ছে
-    user_id = message.chat.id
-    username = message.chat.username
-    first_name = message.chat.first_name
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_text = f"{now} - {first_name} (@{username}) - ID: {user_id} - Movie: {movie_code}\n"
-    with open("log.txt", "a") as f:
-        f.write(log_text)
 
-    # JSON থেকে মুভি পাঠানো হচ্ছে
-    movie = MOVIES.get(movie_code, MOVIES["default"])
-    try:
-        bot.copy_message(chat_id=message.chat.id,
-                         from_chat_id=movie["chat_id"],
-                         message_id=movie["msg_id"])
-    except Exception as e:
-        bot.send_message(message.chat.id, f"❌ ভিডিও পাঠানো যায়নি। এরর: {e}")
+# যখন user মুভি চাইবে (এখানে তুমি movies.json লোড করবে)
+def handle_movie_request(update: Update, context: CallbackContext):
+    movie_name = update.message.text.strip().lower()
 
-# keep_alive ফাংশনটি চালু করা হচ্ছে
-keep_alive()
+    # TODO: এখানে movies.json থেকে lookup করতে হবে
+    # এখন ডেমো হিসেবে শুধু রিপ্লাই করছে
+    update.message.reply_text(f"🔍 You searched for: {movie_name}\n(এখন json lookup করতে হবে)")
 
-# বট সবসময় চালু রাখার জন্য
-print("✅ Bot is running...")
-bot.infinity_polling(timeout=10, long_polling_timeout=5)
+
+# --- নতুন ফিচার ---
+# যখনই প্রাইভেট চ্যানেলে ভিডিও/ডকুমেন্ট আসবে
+def channel_post(update: Update, context: CallbackContext):
+    message = update.channel_post
+
+    file_id = None
+    file_name = None
+
+    if message.video:
+        file_id = message.video.file_id
+        file_name = message.caption or "video.mp4"
+    elif message.document:
+        file_id = message.document.file_id
+        file_name = message.document.file_name
+
+    if file_id:
+        text = (
+            "📂 New Movie Uploaded!\n\n"
+            f"File: {file_name}\n"
+            f"Channel ID: {CHANNEL_ID}\n"
+            f"Message ID: {message.message_id}\n"
+            f"File ID: {file_id}"
+        )
+        # অ্যাডমিনকে পাঠানো হবে
+        context.bot.send_message(chat_id=ADMIN_ID, text=text)
+
+
+def main():
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    # Commands
+    dp.add_handler(CommandHandler("start", start))
+
+    # User movie request
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_movie_request))
+
+    # Channel post handler
+    dp.add_handler(MessageHandler(Filters.update.channel_posts, channel_post))
+
+    # Start the Bot
+    updater.start_polling()
+    updater.idle()
+
+
+if name == "main":
+    main()
