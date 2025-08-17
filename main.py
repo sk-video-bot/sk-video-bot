@@ -1,107 +1,51 @@
+from keep_alive import keep_alive
+import telebot
+from telebot.types import Message
 import os
 import json
-import telebot
+import datetime
 
-# -----------------------------
-# ENVIRONMENT থেকে BOT_TOKEN লোড
-# Render / Railway / Heroku তে BOT_TOKEN নামে রাখবে
-# -----------------------------
-TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = -1002912079356   # তোমার প্রাইভেট চ্যানেলের ID বসাও
+# টোকেন লোড করা হচ্ছে
+TOKEN = os.getenv("TOKEN")
+bot = telebot.TeleBot(TOKEN)
 
-bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+# movies.json ফাইল থেকে মুভির তালিকা লোড করা হচ্ছে
+with open("movies.json", "r") as f:
+    MOVIES = json.load(f)
 
-MOVIES_FILE = "movies.json"
-
-# -----------------------------
-# movies.json না থাকলে তৈরি করবে
-# -----------------------------
-if not os.path.exists(MOVIES_FILE):
-    with open(MOVIES_FILE, "w", encoding="utf-8") as f:
-        json.dump([], f, ensure_ascii=False, indent=4)
-
-
-# -----------------------------
-# movies.json এ নতুন এন্ট্রি সেভ
-# -----------------------------
-def save_movie(message):
-    with open(MOVIES_FILE, "r", encoding="utf-8") as f:
-        movies = json.load(f)
-
-    movie_entry = {
-        "message_id": message.message_id,
-        "file_id": None,
-        "caption": message.caption if message.caption else ""
-    }
-
-    # ভিডিও বা ডকুমেন্ট হলে file_id নিবে
-    if message.video:
-        movie_entry["file_id"] = message.video.file_id
-    elif message.document:
-        movie_entry["file_id"] = message.document.file_id
-
-    movies.append(movie_entry)
-
-    with open(MOVIES_FILE, "w", encoding="utf-8") as f:
-        json.dump(movies, f, ensure_ascii=False, indent=4)
-
-    print(f"[✅] Saved Movie -> {movie_entry}")
-
-
-# -----------------------------
-# চ্যানেলে নতুন পোস্ট আসলেই সেভ করবে
-# -----------------------------
-@bot.channel_post_handler(func=lambda m: True)
-def get_channel_post(message):
-    try:
-        save_movie(message)
-    except Exception as e:
-        print(f"[❌] Error: {e}")
-
-
-# -----------------------------
-# /start কমান্ড
-# -----------------------------
+# /start কমান্ডের জন্য ফাংশন
 @bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "🎬 Welcome! Send me a movie name to search.")
+def send_movie(message: Message):
+    # কমান্ড থেকে মুভির কোড আলাদা করার নির্ভরযোগ্য নিয়ম
+    parts = message.text.split()
+    if len(parts) > 1:
+        movie_code = parts[1]
+    else:
+        movie_code = "default"
 
+    bot.send_message(message.chat.id, "🎬 Welcome to Sk Movie Bot!\nPlease wait...")
 
-# -----------------------------
-# মুভি সার্চ সিস্টেম
-# -----------------------------
-@bot.message_handler(func=lambda m: True)
-def search_movie(message):
-    query = message.text.strip().lower()
+    # ব্যবহারকারীর তথ্য লগ করা হচ্ছে
+    user_id = message.chat.id
+    username = message.chat.username
+    first_name = message.chat.first_name
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_text = f"{now} - {first_name} (@{username}) - ID: {user_id} - Movie: {movie_code}\n"
+    with open("log.txt", "a") as f:
+        f.write(log_text)
 
-    with open(MOVIES_FILE, "r", encoding="utf-8") as f:
-        movies = json.load(f)
+    # JSON থেকে মুভি পাঠানো হচ্ছে
+    movie = MOVIES.get(movie_code, MOVIES["default"])
+    try:
+        bot.copy_message(chat_id=message.chat.id,
+                         from_chat_id=movie["chat_id"],
+                         message_id=movie["msg_id"])
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ ভিডিও পাঠানো যায়নি। এরর: {e}")
 
-    results = [m for m in movies if query in m["caption"].lower()]
+# keep_alive ফাংশনটি চালু করা হচ্ছে
+keep_alive()
 
-    if not results:
-        bot.reply_to(message, "❌ Movie not found!")
-        return
-
-    for movie in results:
-        try:
-            if movie["file_id"]:
-                bot.send_video(
-                    message.chat.id,
-                    movie["file_id"],
-                    caption=movie["caption"]
-                )
-            else:
-                # যদি file_id না থাকে তাহলে ফরওয়ার্ড করবে
-                bot.forward_message(
-                    message.chat.id,
-                    CHANNEL_ID,
-                    movie["message_id"]
-                )
-        except Exception as e:
-            bot.reply_to(message, f"⚠️ Error sending movie: {e}")
-
-
-# -----------------------------
-print("🤖 Bot is running... Watching channel + serving users.")
-bot.infinity_polling()
+# বট সবসময় চালু রাখার জন্য
+print("✅ Bot is running...")
+bot.infinity_polling(timeout=10, long_polling_timeout=5)
