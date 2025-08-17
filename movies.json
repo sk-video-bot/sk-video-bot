@@ -1,10 +1,10 @@
 {
+  "default": {
+    "chat_id": -1002912079356,
+    "msg_id": 0
+  },
   "video1": {
     "chat_id": -1002912079356,
     "msg_id": 5
-  },
-  "video2": {
-    "chat_id": -1002912079356,
-    "msg_id": 7
   }
 }
