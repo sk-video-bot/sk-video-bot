@@ -70,5 +70,9 @@
     "mahejabin": {
     "chat_id": -1002912079356,
     "msg_id": 24
+  },
+   "videocall": {
+    "chat_id": -1002912079356,
+    "msg_id": 25
   }
 }
