@@ -21,10 +21,10 @@ def log_event(text):
     with open("log.txt", "a") as f:
         f.write(f"{now} - {text}\n")
 
-# রোবাস্ট মেসেজ ডিলিট ফাংশন (টেস্ট ভার্সন: 30 সেকেন্ড)
-def delete_message_later(chat_id, message_id, delay=30, retry=3):
+# রোবাস্ট মেসেজ ডিলিট ফাংশন (ফাইনাল: 1 ঘণ্টা)
+def delete_message_later(chat_id, message_id, delay=3600, retry=3):
     for attempt in range(retry):
-        time.sleep(delay if attempt == 0 else 5)  # প্রথমবার ৩০ সেকেন্ড, পরে ব্যর্থ হলে ৫ সেকেন্ড
+        time.sleep(delay if attempt == 0 else 10)  # প্রথমবার ১ ঘণ্টা, পরে ব্যর্থ হলে ১০ সেকেন্ড
         try:
             bot.delete_message(chat_id, message_id)
             log_event(f"✅ Deleted message {message_id} from chat {chat_id}")
