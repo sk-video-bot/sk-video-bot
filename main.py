@@ -7,33 +7,49 @@ import datetime
 import threading
 import time
 
-# টোকেন লোড করা হচ্ছে
+# ===== CONFIGURATION =====
 TOKEN = os.getenv("TOKEN")
+CHANNEL_USERNAME = "@sk_viral_video25"
+CHANNEL_ID = -1002912079356
+DELETE_DELAY = 3600  # seconds (1 hour)
+RETRY_COUNT = 3
+
 bot = telebot.TeleBot(TOKEN)
 
-# movies.json ফাইল থেকে মুভির তালিকা লোড করা হচ্ছে
+# Load movies.json
 with open("movies.json", "r") as f:
     MOVIES = json.load(f)
 
-# লগিং ফাংশন
+# ===== LOGGING =====
 def log_event(text):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open("log.txt", "a") as f:
         f.write(f"{now} - {text}\n")
+    print(f"{now} - {text}")
 
-# রোবাস্ট মেসেজ ডিলিট ফাংশন (ফাইনাল: 1 ঘণ্টা)
-def delete_message_later(chat_id, message_id, delay=3600, retry=3):
+# ===== MESSAGE DELETE FUNCTION =====
+def delete_message_later(chat_id, message_id, delay=DELETE_DELAY, retry=RETRY_COUNT):
     for attempt in range(retry):
-        time.sleep(delay if attempt == 0 else 10)  # প্রথমবার ১ ঘণ্টা, পরে ব্যর্থ হলে ১০ সেকেন্ড
+        time.sleep(delay if attempt == 0 else 10)  # first attempt delay, retry faster
         try:
             bot.delete_message(chat_id, message_id)
             log_event(f"✅ Deleted message {message_id} from chat {chat_id}")
             break
         except Exception as e:
             log_event(f"❌ Delete failed for {message_id} in chat {chat_id}, attempt {attempt+1}: {e}")
-            continue
 
-# /start কমান্ডের জন্য ফাংশন
+# ===== AUTO FORWARD FUNCTION =====
+def auto_forward_new_post(message):
+    try:
+        for movie_code in MOVIES:
+            movie = MOVIES[movie_code]
+            if movie["chat_id"] == CHANNEL_ID and message.message_id == movie["msg_id"]:
+                log_event(f"🔄 Auto-forward triggered for movie: {movie_code}")
+                bot.copy_message(chat_id=message.chat.id, from_chat_id=CHANNEL_ID, message_id=message.message_id)
+    except Exception as e:
+        log_event(f"❌ Auto-forward failed: {e}")
+
+# ===== START COMMAND =====
 @bot.message_handler(commands=['start'])
 def send_movie(message: Message):
     parts = message.text.split()
@@ -41,29 +57,35 @@ def send_movie(message: Message):
 
     bot.send_message(message.chat.id, "🎬 Welcome to Sk Video Bot!\nPlease wait...")
 
-    # ব্যবহারকারীর তথ্য লগ করা হচ্ছে
     user_id = message.chat.id
-    username = message.chat.username
-    first_name = message.chat.first_name
+    username = message.chat.username or "NoUsername"
+    first_name = message.chat.first_name or "NoName"
     log_event(f"{first_name} (@{username}) - ID: {user_id} - Movie: {movie_code}")
 
-    # JSON থেকে মুভি পাঠানো হচ্ছে
-    movie = MOVIES.get(movie_code, MOVIES["default"])
+    movie = MOVIES.get(movie_code, MOVIES.get("default"))
+    if not movie:
+        bot.send_message(message.chat.id, "❌ No movie found.")
+        return
+
     try:
         sent_msg = bot.copy_message(
             chat_id=message.chat.id,
             from_chat_id=movie["chat_id"],
             message_id=movie["msg_id"]
         )
-        # ব্যাকগ্রাউন্ড থ্রেডে ডিলিট টাইমার চালু
         threading.Thread(target=delete_message_later, args=(message.chat.id, sent_msg.message_id)).start()
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ ভিডিও পাঠানো যায়নি। এরর: {e}")
         log_event(f"❌ Failed to send movie {movie_code} to {user_id}: {e}")
 
-# keep_alive ফাংশনটি চালু করা হচ্ছে
-keep_alive()
+# ===== CHANNEL LISTENER =====
+@bot.channel_post_handler(func=lambda m: True)
+def handle_channel_post(message: Message):
+    log_event(f"📢 New post detected in channel {CHANNEL_USERNAME}")
+    auto_forward_new_post(message)
 
-# বট সবসময় চালু রাখার জন্য
-print("✅ Bot is running...")
-bot.infinity_polling(timeout=10, long_polling_timeout=5)
+# ===== MAIN =====
+if name == "main":
+    keep_alive()
+    log_event("✅ Bot is running...")
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
