@@ -24,7 +24,7 @@ def log_event(text):
 # রোবাস্ট মেসেজ ডিলিট ফাংশন (ফাইনাল: 1 ঘণ্টা)
 def delete_message_later(chat_id, message_id, delay=3600, retry=3):
     for attempt in range(retry):
-        time.sleep(delay if attempt == 0 else 10)  # প্রথমবার ১ ঘণ্টা, পরে ব্যর্থ হলে ১০ সেকেন্ড
+        time.sleep(delay if attempt == 0 else 10)
         try:
             bot.delete_message(chat_id, message_id)
             log_event(f"✅ Deleted message {message_id} from chat {chat_id}")
@@ -33,13 +33,21 @@ def delete_message_later(chat_id, message_id, delay=3600, retry=3):
             log_event(f"❌ Delete failed for {message_id} in chat {chat_id}, attempt {attempt+1}: {e}")
             continue
 
+# Safe send function (🔥 NEW)
+def safe_send(chat_id, text):
+    try:
+        return bot.send_message(chat_id, text)
+    except Exception as e:
+        log_event(f"❌ Send message failed: {e}")
+        return None
+
 # /start কমান্ডের জন্য ফাংশন
 @bot.message_handler(commands=['start'])
 def send_movie(message: Message):
     parts = message.text.split()
     movie_code = parts[1] if len(parts) > 1 else "default"
 
-    bot.send_message(message.chat.id, "🎬 Welcome to Sk Video Bot!\nPlease wait...")
+    safe_send(message.chat.id, "🎬 Welcome to Sk Video Bot!\nPlease wait...")
 
     # ব্যবহারকারীর তথ্য লগ করা হচ্ছে
     user_id = message.chat.id
@@ -55,15 +63,26 @@ def send_movie(message: Message):
             from_chat_id=movie["chat_id"],
             message_id=movie["msg_id"]
         )
-        # ব্যাকগ্রাউন্ড থ্রেডে ডিলিট টাইমার চালু
-        threading.Thread(target=delete_message_later, args=(message.chat.id, sent_msg.message_id)).start()
+        if sent_msg:
+            threading.Thread(
+                target=delete_message_later,
+                args=(message.chat.id, sent_msg.message_id),
+                daemon=True  # 🔥 important
+            ).start()
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ ভিডিও পাঠানো যায়নি। এরর: {e}")
+        safe_send(message.chat.id, "❌ ভিডিও পাঠানো যায়নি। পরে আবার চেষ্টা করো।")
         log_event(f"❌ Failed to send movie {movie_code} to {user_id}: {e}")
 
 # keep_alive ফাংশনটি চালু করা হচ্ছে
 keep_alive()
 
-# বট সবসময় চালু রাখার জন্য
+# 🔥 AUTO-RESTART SYSTEM (সবচেয়ে important)
 print("✅ Bot is running...")
-bot.infinity_polling(timeout=10, long_polling_timeout=5)
+
+while True:
+    try:
+        bot.infinity_polling(timeout=60, long_polling_timeout=30)
+    except Exception as e:
+        log_event(f"❌ Bot crashed: {e}")
+        print("🔄 Restarting bot in 5 seconds...")
+        time.sleep(5)
