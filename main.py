@@ -47,7 +47,7 @@ def send_movie(message: Message):
     parts = message.text.split()
     movie_code = parts[1] if len(parts) > 1 else "default"
 
-    safe_send(message.chat.id, "🎬 Welcome to Sk Video Bot!\nPlease wait...")
+    safe_send(message.chat.id, "🎬 Welcome to Viral Video Bot!\nPlease wait...")
 
     # ব্যবহারকারীর তথ্য লগ করা হচ্ছে
     user_id = message.chat.id
